@@ -14,26 +14,78 @@ class GameEngine:
         self.width = width
         self.height = height
 
-        self.bird = Bird(width // 4, height // 2)
-        self.pipe_speed = 4
-        self.pipe_interval = 90  # frames between pipe spawns
-        self._spawn_timer = 0
-        self.pipes = [Pipe(width + 100, height, speed=self.pipe_speed)]
-        self.score = 0
-
         self.font = pygame.font.SysFont("Arial", 30)
         self.game_over_font = pygame.font.SysFont("Arial", 56, bold=True)
         self.final_score_font = pygame.font.SysFont("Arial", 36)
         self.instruction_font = pygame.font.SysFont("Arial", 24)
+        self.difficulty_font = pygame.font.SysFont("Arial", 30)
+
+        # Difficulty settings: (pipe speed, pipe gap)
+        self.difficulties = {
+            "Easy": (3, 180),
+            "Medium": (4, 150),
+            "Hard": (6, 120),
+        }
+
+        self.difficulty = "Medium"
 
         self.game_over = False
+        self.exit_requested = False
+
+        self._reset_game()
+
+    def _reset_game(self):
+        """Reset all state needed for a completely new game."""
+        self.bird = Bird(self.width // 4, self.height // 2)
+
+        self.pipe_speed, self.pipe_gap = self.difficulties[
+            self.difficulty
+        ]
+
+        self.pipe_interval = 90
+        self._spawn_timer = 0
+
+        self.pipes = [
+            Pipe(
+                self.width + 100,
+                self.height,
+                gap=self.pipe_gap,
+                speed=self.pipe_speed,
+            )
+        ]
+
+        self.score = 0
+        self.game_over = False
+        self.exit_requested = False
+
+    def _start_new_game(self, difficulty):
+        """Start a fresh game using the selected difficulty."""
+        self.difficulty = difficulty
+        self._reset_game()
 
     def handle_event(self, event):
-        # Once the game is over, normal gameplay input is disabled.
+        # -------------------------
+        # Game Over input
+        # -------------------------
         if self.game_over:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_e:
+                    self.exit_requested = True
+
+                elif event.key == pygame.K_1:
+                    self._start_new_game("Easy")
+
+                elif event.key == pygame.K_2:
+                    self._start_new_game("Medium")
+
+                elif event.key == pygame.K_3:
+                    self._start_new_game("Hard")
+
             return
 
-        # Flap is edge-triggered (KEYDOWN / MOUSEBUTTONDOWN), not held.
+        # -------------------------
+        # Normal gameplay input
+        # -------------------------
         if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
             self.bird.flap()
 
@@ -41,8 +93,7 @@ class GameEngine:
             self.bird.flap()
 
     def handle_input(self):
-        # Reserved for continuously-held-key input; flapping is handled
-        # in handle_event instead, so there's nothing to poll here.
+        # Reserved for continuously-held-key input.
         pass
 
     def _bird_collides_with_rect(self, rect):
@@ -53,7 +104,10 @@ class GameEngine:
         dx = self.bird.x - closest_x
         dy = self.bird.y - closest_y
 
-        return dx * dx + dy * dy <= self.bird.radius * self.bird.radius
+        return (
+            dx * dx + dy * dy
+            <= self.bird.radius * self.bird.radius
+        )
 
     def _check_pipe_collision(self, pipe):
         """Check the bird against both the upper and lower pipe."""
@@ -63,13 +117,13 @@ class GameEngine:
         )
 
     def update(self):
-        # Freeze all normal gameplay after Game Over.
+        # Freeze normal gameplay after Game Over.
         if self.game_over:
             return
 
         self.bird.update()
 
-        # Ground and ceiling collision.
+        # Ceiling / ground collision.
         if (
             self.bird.y - self.bird.radius <= 0
             or self.bird.y + self.bird.radius >= self.height
@@ -81,16 +135,20 @@ class GameEngine:
 
         if self._spawn_timer >= self.pipe_interval:
             self._spawn_timer = 0
+
             self.pipes.append(
-                Pipe(self.width, self.height, speed=self.pipe_speed)
+                Pipe(
+                    self.width,
+                    self.height,
+                    gap=self.pipe_gap,
+                    speed=self.pipe_speed,
+                )
             )
 
         for pipe in self.pipes:
             pipe.move()
 
-            # Task 1 collision detection:
-            # check the entire circular bird hitbox instead of
-            # checking only the bird's center point.
+            # Preserve Task 1 collision detection.
             if self._check_pipe_collision(pipe):
                 self.game_over = True
                 return
@@ -100,7 +158,10 @@ class GameEngine:
                 pipe.scored = True
                 self.score += 1
 
-        self.pipes = [p for p in self.pipes if not p.off_screen()]
+        self.pipes = [
+            pipe for pipe in self.pipes
+            if not pipe.off_screen()
+        ]
 
     def render(self, screen):
         # Draw pipes.
@@ -113,54 +174,102 @@ class GameEngine:
             screen,
             WHITE,
             (int(self.bird.x), int(self.bird.y)),
-            self.bird.radius
+            self.bird.radius,
         )
 
-        # Draw score during gameplay.
+        # Draw current score.
         score_text = self.font.render(
             f"Score: {self.score}",
             True,
-            WHITE
+            WHITE,
         )
         screen.blit(score_text, (10, 10))
 
-        # Task 2: Game Over screen.
+        # -------------------------
+        # Game Over screen
+        # -------------------------
         if self.game_over:
-            overlay = pygame.Surface((self.width, self.height))
-            overlay.set_alpha(160)
+            overlay = pygame.Surface(
+                (self.width, self.height)
+            )
+            overlay.set_alpha(170)
             overlay.fill(BLACK)
             screen.blit(overlay, (0, 0))
 
             game_over_text = self.game_over_font.render(
                 "GAME OVER",
                 True,
-                WHITE
+                WHITE,
             )
 
             final_score_text = self.final_score_font.render(
                 f"Final Score: {self.score}",
                 True,
-                WHITE
+                WHITE,
             )
 
-            instruction_text = self.instruction_font.render(
-                "Close the window to exit",
+            difficulty_text = self.difficulty_font.render(
+                "Choose Difficulty",
                 True,
-                WHITE
+                WHITE,
+            )
+
+            easy_text = self.instruction_font.render(
+                "1 - Easy",
+                True,
+                WHITE,
+            )
+
+            medium_text = self.instruction_font.render(
+                "2 - Medium",
+                True,
+                WHITE,
+            )
+
+            hard_text = self.instruction_font.render(
+                "3 - Hard",
+                True,
+                WHITE,
+            )
+
+            exit_text = self.instruction_font.render(
+                "E - Exit",
+                True,
+                WHITE,
             )
 
             game_over_rect = game_over_text.get_rect(
-                center=(self.width // 2, self.height // 2 - 80)
+                center=(self.width // 2, 100)
             )
 
             final_score_rect = final_score_text.get_rect(
-                center=(self.width // 2, self.height // 2)
+                center=(self.width // 2, 170)
             )
 
-            instruction_rect = instruction_text.get_rect(
-                center=(self.width // 2, self.height // 2 + 60)
+            difficulty_rect = difficulty_text.get_rect(
+                center=(self.width // 2, 250)
+            )
+
+            easy_rect = easy_text.get_rect(
+                center=(self.width // 2, 310)
+            )
+
+            medium_rect = medium_text.get_rect(
+                center=(self.width // 2, 360)
+            )
+
+            hard_rect = hard_text.get_rect(
+                center=(self.width // 2, 410)
+            )
+
+            exit_rect = exit_text.get_rect(
+                center=(self.width // 2, 470)
             )
 
             screen.blit(game_over_text, game_over_rect)
             screen.blit(final_score_text, final_score_rect)
-            screen.blit(instruction_text, instruction_rect)
+            screen.blit(difficulty_text, difficulty_rect)
+            screen.blit(easy_text, easy_rect)
+            screen.blit(medium_text, medium_rect)
+            screen.blit(hard_text, hard_rect)
+            screen.blit(exit_text, exit_rect)
