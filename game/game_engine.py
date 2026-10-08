@@ -7,6 +7,7 @@ from .pipe import Pipe
 WHITE = (255, 255, 255)
 GREEN = (0, 150, 0)
 
+
 class GameEngine:
     def __init__(self, width, height):
         self.width = width
@@ -17,7 +18,6 @@ class GameEngine:
         self.pipe_interval = 90  # frames between pipe spawns
         self._spawn_timer = 0
         self.pipes = [Pipe(width + 100, height, speed=self.pipe_speed)]
-
         self.score = 0
         self.font = pygame.font.SysFont("Arial", 30)
         self.game_over = False
@@ -34,30 +34,53 @@ class GameEngine:
         # in handle_event instead, so there's nothing to poll here.
         pass
 
+    def _bird_collides_with_rect(self, rect):
+        """Check whether the bird's circular hitbox overlaps a rectangle."""
+        closest_x = max(rect.left, min(self.bird.x, rect.right))
+        closest_y = max(rect.top, min(self.bird.y, rect.bottom))
+
+        dx = self.bird.x - closest_x
+        dy = self.bird.y - closest_y
+
+        return dx * dx + dy * dy <= self.bird.radius * self.bird.radius
+
+    def _check_pipe_collision(self, pipe):
+        """Check the bird against both the upper and lower pipe."""
+        return (
+            self._bird_collides_with_rect(pipe.top_rect())
+            or self._bird_collides_with_rect(pipe.bottom_rect())
+        )
+
     def update(self):
         if self.game_over:
             return
 
         self.bird.update()
 
-        if self.bird.y - self.bird.radius <= 0 or self.bird.y + self.bird.radius >= self.height:
+        # Keep ceiling and ground collision consistent with the bird's
+        # circular hitbox.
+        if (
+            self.bird.y - self.bird.radius <= 0
+            or self.bird.y + self.bird.radius >= self.height
+        ):
             self.game_over = True
             return
 
         self._spawn_timer += 1
+
         if self._spawn_timer >= self.pipe_interval:
             self._spawn_timer = 0
-            self.pipes.append(Pipe(self.width, self.height, speed=self.pipe_speed))
+            self.pipes.append(
+                Pipe(self.width, self.height, speed=self.pipe_speed)
+            )
 
         for pipe in self.pipes:
             pipe.move()
 
-            # NOTE: collision only checks the bird's single center point
-            # against the pipe rects, rather than the bird's full rect.
-            # At higher pipe speeds the bird can visually clip a pipe's
-            # edge for a frame or two without this ever registering a
-            # hit. See Task 1 in the README.
-            if pipe.top_rect().collidepoint(self.bird.center()) or pipe.bottom_rect().collidepoint(self.bird.center()):
+            # Check the full circular bird hitbox rather than only its
+            # center point. This prevents the bird from clipping the
+            # edge of a pipe without triggering a collision.
+            if self._check_pipe_collision(pipe):
                 self.game_over = True
 
             if not pipe.scored and pipe.x + pipe.width < self.bird.x:
@@ -71,12 +94,23 @@ class GameEngine:
             pygame.draw.rect(screen, GREEN, pipe.top_rect())
             pygame.draw.rect(screen, GREEN, pipe.bottom_rect())
 
-        pygame.draw.circle(screen, WHITE, (int(self.bird.x), int(self.bird.y)), self.bird.radius)
+        pygame.draw.circle(
+            screen,
+            WHITE,
+            (int(self.bird.x), int(self.bird.y)),
+            self.bird.radius
+        )
 
-        score_text = self.font.render(f"Score: {self.score}", True, WHITE)
+        score_text = self.font.render(
+            f"Score: {self.score}",
+            True,
+            WHITE
+        )
         screen.blit(score_text, (10, 10))
 
-        if self.game_over and not getattr(self, "_game_over_logged", False):
-            # NOTE: no proper game-over screen yet - see Task 2 in the README.
+        if self.game_over and not getattr(
+            self, "_game_over_logged", False
+        ):
+            # NOTE: no proper game-over screen yet - see Task 2.
             print("Game over! Final score:", self.score)
             self._game_over_logged = True
