@@ -71,6 +71,7 @@ class SoundManager:
 
             value = int(amplitude * math.sin(phase))
             samples.append(value)
+            samples.append(value)
 
         return pygame.mixer.Sound(buffer=samples.tobytes())
 
